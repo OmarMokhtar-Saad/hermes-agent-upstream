@@ -575,6 +575,36 @@ class TestRegression_ToolsetScoping:
 # ---------------------------------------------------------------------------
 
 
+class TestKeepTools:
+    """``tool_search.keep`` holds a plugin tool out of the bridge: a provider that filters
+    the tool array by its own allowlist (hermes-brain) cannot reach a deferred tool."""
+
+    @pytest.fixture
+    def plugin_tool(self):
+        from tools.registry import registry
+        name = "keep_probe_plugin_tool"
+        registry.register(name=name, handler=lambda args, **kwargs: "{}",
+                          schema=_td(name, "Plugin tool."), toolset="keep-probe-plugin")
+        yield name
+        registry.deregister(name)
+
+    def test_kept_plugin_tool_stays_visible(self, plugin_tool):
+        from tools.tool_search import BRIDGE_TOOL_NAMES, ToolSearchConfig, assemble_tool_defs
+        cfg = ToolSearchConfig.from_raw({"enabled": "on", "keep": [plugin_tool]})
+        names = [td["function"]["name"] for td in
+                 assemble_tool_defs([_td(plugin_tool)], context_length=1_000_000, config=cfg).tool_defs]
+        assert plugin_tool in names
+        assert not BRIDGE_TOOL_NAMES & set(names)
+
+    def test_default_keep_still_defers_plugin_tools(self, plugin_tool):
+        from tools.tool_search import ToolSearchConfig, assemble_tool_defs
+        cfg = ToolSearchConfig.from_raw({"enabled": "on"})
+        assert cfg.keep_tools == frozenset()
+        names = [td["function"]["name"] for td in
+                 assemble_tool_defs([_td(plugin_tool)], context_length=1_000_000, config=cfg).tool_defs]
+        assert plugin_tool not in names
+
+
 class TestCatalogListing:
 
 

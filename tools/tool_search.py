@@ -51,6 +51,9 @@ class ToolSearchConfig:
     listing_max_tokens: int = 4000  # budget = min(this, threshold_pct% of context)
     # None = curated default; an explicit list replaces it wholesale ([] = defer no core tools).
     defer_tools: Optional[frozenset] = None
+    # Names that never defer, plugin/MCP tools included: a provider that filters the tool
+    # array by its own allowlist (hermes-brain) cannot reach a tool hidden behind the bridge.
+    keep_tools: frozenset = frozenset()
 
     @property
     def effective_defer_tools(self) -> frozenset:
@@ -81,7 +84,15 @@ class ToolSearchConfig:
             listing=_tri_state(raw.get("listing", "auto")),
             listing_max_tokens=_clamped_int(raw.get("listing_max_tokens"), 4000, 200, 60000),
             defer_tools=(frozenset(str(n).strip() for n in defer_raw if str(n).strip())
-                         if isinstance(defer_raw, (list, tuple, set)) else None))
+                         if isinstance(defer_raw, (list, tuple, set)) else None),
+            keep_tools=_name_set(raw.get("keep")))
+
+
+def _name_set(raw: Any) -> frozenset:
+    """A list of tool names as a frozenset; anything else is empty."""
+    if not isinstance(raw, (list, tuple, set)):
+        return frozenset()
+    return frozenset(str(n).strip() for n in raw if str(n).strip())
 
 
 _TRI_STATE_ALIASES = {"true": "on", "1": "on", "yes": "on", "false": "off", "0": "off", "no": "off"}
@@ -167,6 +178,7 @@ def _tool_def_names(tool_defs: Iterable[dict[str, Any]]) -> Iterable[str]:
 
 
 def classify_tools(tool_defs: list[dict[str, Any]], defer_tools: Optional[frozenset] = None,
+                   keep_tools: frozenset = frozenset(),
                    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split a tool-defs list into (visible, deferrable); bridge tools are dropped (re-added
     after classification)."""
@@ -174,13 +186,15 @@ def classify_tools(tool_defs: list[dict[str, Any]], defer_tools: Optional[frozen
     deferrable: list[dict[str, Any]] = []
     for td, name in zip(tool_defs, _tool_def_names(tool_defs)):
         if name not in BRIDGE_TOOL_NAMES:
-            (deferrable if is_deferrable_tool_name(name, defer_tools) else visible).append(td)
+            deferred = name not in keep_tools and is_deferrable_tool_name(name, defer_tools)
+            (deferrable if deferred else visible).append(td)
     return visible, deferrable
 
 
 def _deferrable_in(tool_defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Deferrable subset of pre-assembly ``tool_defs`` under the read-only user config."""
-    return classify_tools(tool_defs, load_config_readonly().effective_defer_tools)[1]
+    cfg = load_config_readonly()
+    return classify_tools(tool_defs, cfg.effective_defer_tools, cfg.keep_tools)[1]
 
 
 def estimate_tokens_from_schemas(tool_defs: Iterable[dict[str, Any]]) -> int:
@@ -339,7 +353,7 @@ def assemble_tool_defs(tool_defs: list[dict[str, Any]], *, context_length: Optio
     config = config or load_config()
     incoming = [td for td, name in zip(tool_defs, _tool_def_names(tool_defs))
                 if name not in BRIDGE_TOOL_NAMES]
-    visible, deferrable = classify_tools(incoming, config.effective_defer_tools)
+    visible, deferrable = classify_tools(incoming, config.effective_defer_tools, config.keep_tools)
     connections_granted = connections_in_scope(incoming)
     if not deferrable:
         if should_activate(config, 0, context_length, connections_granted=connections_granted):
