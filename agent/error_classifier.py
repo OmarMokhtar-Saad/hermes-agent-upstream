@@ -394,7 +394,8 @@ _TIMEOUT_MESSAGE_PATTERNS = (
 _CONNECTION_MESSAGE_PATTERNS = (
     "connection refused", "econnrefused", "no route to host", "network is unreachable", "network unreachable",
     "name or service not known", "temporary failure in name resolution", "nodename nor servname provided",
-    "getaddrinfo failed", "getaddrinfo enotfound", "eai_again",
+    "getaddrinfo failed", "getaddrinfo enotfound", "enotfound", "eai_again",
+    "can't reach the api server",
     "fetch failed", "failed to fetch",
     "upstream connect error",
 )
