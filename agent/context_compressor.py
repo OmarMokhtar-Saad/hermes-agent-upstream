@@ -1734,11 +1734,10 @@ _CLARIFY_NON_RESPONSE_PREFIXES = (
     "[user did not respond",  # gateway clarify delivery timeout
     "[clarify prompt could not be delivered",  # gateway UNDELIVERED*
     "[oneshot mode:",  # hermes_cli/oneshot.py
+    "[user sent a message instead of answering",  # gateway clarify superseded
 )
 # Matched whole: as a prefix these would also swallow real answers that start the same way.
-_CLARIFY_NON_RESPONSE_TEXTS = (
-    "The user cancelled. Use your best judgement to proceed.",  # classic CLI Ctrl+C
-)
+_CLARIFY_NON_RESPONSE_TEXTS = ("The user cancelled. Use your best judgement to proceed.",)  # classic CLI Ctrl+C
 
 
 # Historical callbacks used repr(question) and repr(list[str]). Quoted fields

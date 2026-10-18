@@ -106,10 +106,13 @@ def _clarify_send_then_wait(fut, *, clarify_id: str, session_key: str, clarify_m
     late = _LateFailureWatch(fut, clarify_id=clarify_id, session_key=session_key,
                              clarify_mod=clarify_mod, fallback=fallback)
     timeout = clarify_mod.get_clarify_timeout()
+    entry = clarify_mod.get_entry(clarify_id)
     response = clarify_mod.wait_for_response(clarify_id, timeout=float(timeout))
     late.disarm()
     if late.undeliverable:
         return late.undeliverable, False
+    if entry is not None and entry.superseded is True:
+        return clarify_mod.SUPERSEDED_NOTICE, False
     if response == clarify_mod.CANCELLED:
         return response, False
     if response is None or response == "":

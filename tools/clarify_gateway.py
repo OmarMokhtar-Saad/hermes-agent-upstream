@@ -27,6 +27,7 @@ class _ClarifyEntry:
     event: threading.Event = field(default_factory=threading.Event)
     response: Optional[str] = None
     awaiting_text: bool = False  # set when user picked "Other" or clarify is open-ended
+    superseded: bool = False  # released because the user sent a message instead of answering
 
 
 _lock = threading.RLock()
@@ -41,6 +42,10 @@ TEXT_RESOLVED = "resolved"
 TEXT_REJECTED_PROSE = "rejected_prose"
 TEXT_REJECTED_SELECTION = "rejected_selection"
 TEXT_NO_PENDING = "no_pending"
+# What the agent reads when the user's message released the prompt: not inactivity, and the
+# message itself follows as the next user turn.
+SUPERSEDED_NOTICE = ("[user sent a message instead of answering; it follows. "
+                     "Ask again if you still need an answer]")
 SKIP_WORD = "skip"
 SKIPPED = "\x00skipped"
 CANCELLED = "\x00cancelled"
@@ -119,6 +124,24 @@ def get_pending(clarify_id: str) -> Optional[_ClarifyEntry]:
     with _lock:
         entry = _entries.get(clarify_id)
         return entry if entry is not None and not entry.event.is_set() else None
+
+
+def supersede(clarify_id: str) -> bool:
+    """Release the waiter because the user sent a message instead of answering; the waiter reports
+    ``SUPERSEDED_NOTICE``, never "did not respond". False if already resolved/expired/unknown."""
+    with _lock:
+        entry = _entries.get(clarify_id)
+        if entry is None or entry.event.is_set():
+            return False
+        entry.superseded = True
+        entry.response = ""
+        entry.event.set()
+        return True
+
+
+def get_entry(clarify_id: str) -> Optional[_ClarifyEntry]:
+    with _lock:
+        return _entries.get(clarify_id)
 
 
 def get_pending_for_session(session_key: str, *, include_choice_prompts: bool = False) -> Optional[_ClarifyEntry]:
