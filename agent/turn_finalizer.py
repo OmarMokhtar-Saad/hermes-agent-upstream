@@ -497,9 +497,13 @@ def apply_llm_output_transform(
     rewritten (prompt-cache invariant)."""
     if logger is None:
         from agent.conversation_loop import logger
+    # Keyed by turn: overlapping turns on one agent must never read each other's outcome and
+    # re-fire the hook on already-transformed text (a doubled footer).
     recorded = getattr(agent, "_llm_output_transform", None)
-    if isinstance(recorded, tuple) and len(recorded) == 3 and recorded[0] == turn_id:
-        _, transformed, pre_transform = recorded
+    if not isinstance(recorded, dict):
+        recorded = agent._llm_output_transform = {}
+    if turn_id in recorded:
+        transformed, pre_transform = recorded[turn_id]
         return final_response, transformed, pre_transform
     if not final_response:
         return final_response, False, None
@@ -518,7 +522,7 @@ def apply_llm_output_transform(
         if isinstance(_hook_result, str) and _hook_result:
             pre_transform, final_response, transformed = final_response, _hook_result, True
             break
-    agent._llm_output_transform = (turn_id, transformed, pre_transform)
+    recorded[turn_id] = (transformed, pre_transform)
     return final_response, transformed, pre_transform
 
 
@@ -659,6 +663,8 @@ def finalize_turn(
             agent, final_response, logger, platform=_platform, effective_task_id=effective_task_id,
             turn_id=turn_id, original_user_message=original_user_message, messages=messages,
         )
+    # _apply_output_hooks is the turn's last reader of its recorded transform.
+    getattr(agent, "_llm_output_transform", {}).pop(turn_id, None)
 
     # Context engine observation hook: the turn finished with the finalized transcript.
     # Fail-open. ``_last_turn_usage`` is the last response's canonical usage dict, or

@@ -60,7 +60,7 @@ def finish_text_response(
     _preflight_compression_blocked: Any, codex_ack_continuations: Any,
     truncated_response_parts: Any, length_continue_retries: Any,
     _pending_verification_response: Any, _pending_verification_response_previewed: Any,
-    effective_task_id: Any,
+    turn_id: Any, effective_task_id: Any,
 ) -> FinalResponseVerdict:
     """Finish (or defer) a text-only assistant response in the original guard order. Every
     continuation path sets ``final_response = None`` so an acknowledgment never suppresses
@@ -349,7 +349,7 @@ def finish_text_response(
     _transformed = False
     if not getattr(agent, "_interrupt_requested", False):
         final_response, _transformed, _ = apply_llm_output_transform(
-            agent, final_response, turn_id=getattr(agent, "_current_turn_id", "") or "", logger=logger,
+            agent, final_response, turn_id=turn_id, logger=logger,
         )
     if _transformed:
         if _promoted:

@@ -99,3 +99,40 @@ def test_recovery_path_tail_row_carries_transformed_text(db_agent, monkeypatch):
     assert messages[-1]["role"] == "assistant"
     assert messages[-1]["content"] == "REWRITTEN:RECOVERED TEXT"
     assert calls.count("transform_llm_output") == 1
+
+
+def test_a_concurrent_turn_moving_current_turn_id_does_not_transform_twice(db_agent, monkeypatch):
+    """Another turn starting on the same agent rewrites ``_current_turn_id`` mid-turn; the
+    reply must still be transformed exactly once (a second firing doubles the footer)."""
+    agent, _db = db_agent
+    calls = []
+    monkeypatch.setattr("hermes_cli.lifecycle.invoke_hook", _rewriting_hook(calls))
+    reply = _fake_completion("RAW MODEL TEXT")
+
+    def create(**kwargs):
+        agent._current_turn_id = "some-other-turn"
+        return reply(**kwargs)
+
+    agent.client.chat.completions.create = create
+
+    result = agent.run_conversation("hello")
+
+    assert result["final_response"] == "REWRITTEN:RAW MODEL TEXT"
+    assert calls.count("transform_llm_output") == 1
+
+
+def test_overlapping_turns_each_keep_their_own_transform_outcome(db_agent, monkeypatch):
+    """Turn B transforming between turn A's two seams must not evict A's recorded outcome."""
+    from agent.turn_finalizer import apply_llm_output_transform
+
+    agent, _db = db_agent
+    calls = []
+    monkeypatch.setattr("hermes_cli.lifecycle.invoke_hook", _rewriting_hook(calls))
+
+    a_text, _, _ = apply_llm_output_transform(agent, "A", turn_id="turn-a")
+    apply_llm_output_transform(agent, "B", turn_id="turn-b")
+    again, transformed, pre = apply_llm_output_transform(agent, a_text, turn_id="turn-a")
+
+    assert again == a_text == "REWRITTEN:A"
+    assert (transformed, pre) == (True, "A")
+    assert calls.count("transform_llm_output") == 2
