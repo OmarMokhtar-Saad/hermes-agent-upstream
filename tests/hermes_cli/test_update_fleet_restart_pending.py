@@ -1160,3 +1160,18 @@ def test_completion_arms_obligation_with_checkout_sha_when_head_capture_empty(mo
         {"expected_sha": "", "receipt": {"update_id": "u1"}, "windows_resume": None})
 
     assert armed == [checkout]
+
+
+def test_startup_hint_is_skipped_for_the_gateway_run_launch(monkeypatch):
+    """`gateway run` is itself the restart: it has not published its identity yet, so the
+    pending-restart hint would always fire spuriously."""
+    import sys
+    import hermes_cli.update_receipt as receipt
+    from hermes_cli import update_cmd_fleet
+
+    def boom():
+        raise AssertionError("hint must not read receipts for `gateway run`")
+
+    monkeypatch.setattr(receipt, "read_latest_receipt", boom)
+    monkeypatch.setattr(sys, "argv", ["hermes", "gateway", "run"])
+    update_cmd_fleet._warn_pending_fleet_restart_on_startup()

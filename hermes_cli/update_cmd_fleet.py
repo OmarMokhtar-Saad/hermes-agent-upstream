@@ -5,6 +5,7 @@ Split out of ``hermes_cli/update_cmd.py``; every name is re-imported there so
 imported lazily inside each function (no import cycle; test patches stay effective).
 """
 
+import itertools
 import json
 import logging
 import re
@@ -505,6 +506,11 @@ def _warn_pending_fleet_restart(*, startup: bool = False) -> None:
 
 def _warn_pending_fleet_restart_on_startup() -> None:
     """Cheap CLI-startup hint. Never restarts; never raises."""
+    argv = sys.argv[1:]
+    if any(a == "gateway" and b == "run" for a, b in itertools.pairwise(argv)):
+        # The gateway's own launch is the restart: it has not published its identity yet, so the
+        # fleet would look unrestarted and every restart would log the warning.
+        return
     from hermes_cli.update_receipt import read_latest_receipt
     from hermes_cli.update_serve_obligations import retain_receipt_manual_serves, warn_pending_manual_serves
 
